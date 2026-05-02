@@ -60,7 +60,6 @@ private:
 	GoalHandleNav::SharedPtr goal_handle_;
 	rclcpp::CallbackGroup::SharedPtr my_callback_group_;
   	bool cancel_sent_{false};
-	float target_goal;
 	float remaining{0.0f};
 	float remaining2{0.0f};
 
@@ -71,17 +70,13 @@ private:
 			RCLCPP_INFO(this->get_logger(), "Goal accepted by server, waiting for result");
 		goal_handle_ = goal_handle;
 	};
-	void feedback_cb(GoalHandleNav::SharedPtr goal_handle, const std::shared_ptr<const Nav::Feedback> feedback){
+	void feedback_cb(GoalHandleNav::SharedPtr , const std::shared_ptr<const Nav::Feedback> feedback){
 		remaining = feedback->err_pose;
 		remaining2 = feedback->err_th;
-		//RCLCPP_INFO(this->get_logger(), "Errors: %.2f   %.2f", remaining, remaining2*180/M_PI);
-
-		//RCLCPP_INFO(this->get_logger(), "Feedback: cur_pose=%.3f", feedback->cur_pose);
 		 if (cancel_sent_ || !goal_handle_) {
       		return;
 		if (remaining < 1.0 && remaining > -1.0 && remaining2 < 0.1 && remaining2 > -0.1) {
 		cancel_sent_ = true;
-		//RCLCPP_WARN(this->get_logger(),"Remaining angle less than 1.0, cancelling goal...");
 		client_ptr_->async_cancel_goal(goal_handle_);
 		goal_handle_ = nullptr;
 		}
@@ -93,6 +88,8 @@ private:
 		switch (result.code) {
 			case rclcpp_action::ResultCode::SUCCEEDED:
 				RCLCPP_INFO(this->get_logger(), "Result: done=%s", result.result->done ? "true" : "false");
+				RCLCPP_INFO(this->get_logger(), "finalstate:   distance: %.2f   angle: %.2f", remaining, remaining2*180/M_PI);
+
 				break;
 			case rclcpp_action::ResultCode::ABORTED:
 				RCLCPP_ERROR(this->get_logger(), "Goal was aborted");
@@ -120,12 +117,6 @@ private:
             std::cin >> choice;
 
             if (choice == 1) {
-				/*
-                float target;
-                std::cout << "Enter target distance: ";
-                std::cin >> target;
-                this->send_goal(target);
-				*/
 				float x, y, theta;
 				std::cout << "Enter Goal X: ";
 				std::cin >> x;

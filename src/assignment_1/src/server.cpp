@@ -24,8 +24,6 @@ public:
 	: Node("Server", options)
 	{// Inside NavServer constructor
 	this->get_logger().set_level(rclcpp::Logger::Level::Warn);	
-	//	my_callback_group_ = this->create_callback_group(
-    //	rclcpp::CallbackGroupType::MutuallyExclusive);
 		my_callback_group_ = this->create_callback_group(
 			rclcpp::CallbackGroupType::Reentrant);
 		auto sub_options = rclcpp::SubscriptionOptions();
@@ -33,8 +31,6 @@ public:
 
 		// publisher to /cmd_vel
 		cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
-		
-
 		// subscriber to /odom
 		odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
 			"/odom", 10,std::bind(&Server::odom_callback, this, std::placeholders::_1),sub_options);
@@ -64,16 +60,9 @@ private:
 	float robot_theta_{0.0f};
 	int init = 1;
 	rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID &uuid,
-											std::shared_ptr<const Nav::Goal> goal)
+											std::shared_ptr<const Nav::Goal> )
 	{
 		(void)uuid;
-		//RCLCPP_INFO(this->get_logger(), "Received goal request: %f", goal->goal);
-		/*
-		if (goal->goal < 0.0f) {
-			RCLCPP_WARN(this->get_logger(), "Rejecting negative goal");
-			return rclcpp_action::GoalResponse::REJECT;
-		}
-		*/
 		return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 	}
 
@@ -86,8 +75,6 @@ private:
 
 	void handle_accepted(const std::shared_ptr<GoalHandleNav> goal_handle)
 	{
-		// run execution in a separate thread
-		//std::thread{std::bind(&Server::execute, this, std::placeholders::_1), goal_handle}.detach();
 		execute(goal_handle);
 	}
 
@@ -96,7 +83,6 @@ private:
 	
 		RCLCPP_INFO(this->get_logger(), "Executing goal...");
 		rclcpp::Rate loop_rate(10);
-
 		const auto goal = goal_handle->get_goal();
 		auto feedback = std::make_shared<Nav::Feedback>();
 		auto result = std::make_shared<Nav::Result>();
@@ -148,7 +134,7 @@ private:
 				while (orientation_error > M_PI) orientation_error -= 2.0 * M_PI;
 				while (orientation_error < -M_PI) orientation_error += 2.0 * M_PI;
 
-				w = scaleRotationRate*0.2 * orientation_error;
+				w = scaleRotationRate * orientation_error;
 			}
 			
 			
@@ -162,10 +148,8 @@ private:
 				cmd_pub_->publish(stop_msg);
 				result->done = true;
 				goal_handle->succeed(result);
-				//RCLCPP_INFO(this->get_logger(), "Goal reached: %f", cur);
 				return;
 			}
-
 			// publish velocity proportional to error (clamped)
 			geometry_msgs::msg::Twist cmd;
 			float v = err_pose_ * 0.5f;
@@ -175,7 +159,6 @@ private:
 			if (w < -0.5f) w = -0.5f;
 			if (std::fabs(err_pose_) < 0.05f)
 				v = 0.0f;
-
 			cmd.linear.x = v;
 			cmd.angular.z = w;
 			cmd_pub_->publish(cmd);
@@ -201,17 +184,6 @@ private:
     curr_x_ = msg->pose.pose.position.x;
     curr_y_ = msg->pose.pose.position.y;
 	robot_theta_ = tf2::getYaw(msg->pose.pose.orientation);
-	double x1 = msg->pose.pose.orientation.x;
-	double y1 = msg->pose.pose.orientation.y;
-	double z1 = msg->pose.pose.orientation.z;
-	double w1 = msg->pose.pose.orientation.w;
-
-	// Calculate yaw (rotation around Z-axis)
-	double siny_cosp = 2.0 * (w1 * z1 + x1 * y1);
-	double cosy_cosp = 1.0 - 2.0 * (y1 * y1 + z1 * z1);
-	//robot_theta_ = std::atan2(siny_cosp, cosy_cosp);
-	// Optional: Log it to check if it's workin
-	//RCLCPP_INFO(this->get_logger(), "Current X: %f", current_pose_);
 	}
 };
 }
