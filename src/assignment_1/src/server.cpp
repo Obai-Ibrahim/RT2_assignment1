@@ -9,6 +9,8 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "custom_interfaces/action/nav.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
+#include "tf2/utils.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 using namespace std::chrono_literals;
 
@@ -31,6 +33,8 @@ public:
 
 		// publisher to /cmd_vel
 		cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+		
+
 		// subscriber to /odom
 		odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
 			"/odom", 10,std::bind(&Server::odom_callback, this, std::placeholders::_1),sub_options);
@@ -53,16 +57,23 @@ private:
 	std::mutex odom_mutex_;
 	float current_pose_{0.0f};
 	rclcpp::CallbackGroup::SharedPtr my_callback_group_;
-
-	rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID & uuid,
-																					std::shared_ptr<const Nav::Goal> goal)
+	float err_pose_{0.0f};
+	float err_th_{0.0f};
+	float curr_x_{0.0f};
+	float curr_y_{0.0f};
+	float robot_theta_{0.0f};
+	int init = 1;
+	rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID &uuid,
+											std::shared_ptr<const Nav::Goal> goal)
 	{
 		(void)uuid;
-		RCLCPP_INFO(this->get_logger(), "Received goal request: %f", goal->goal);
+		//RCLCPP_INFO(this->get_logger(), "Received goal request: %f", goal->goal);
+		/*
 		if (goal->goal < 0.0f) {
 			RCLCPP_WARN(this->get_logger(), "Rejecting negative goal");
 			return rclcpp_action::GoalResponse::REJECT;
 		}
+		*/
 		return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 	}
 
@@ -82,6 +93,7 @@ private:
 
 	void execute(const std::shared_ptr<GoalHandleNav> goal_handle)
 	{
+	
 		RCLCPP_INFO(this->get_logger(), "Executing goal...");
 		rclcpp::Rate loop_rate(10);
 
@@ -94,6 +106,8 @@ private:
 			if (goal_handle->is_canceling()) {
 				// stop robot
 				geometry_msgs::msg::Twist stop_msg;
+				stop_msg.angular.z = 0;
+				stop_msg.linear.x = 0;
 				cmd_pub_->publish(stop_msg);
 				result->done = false;
 				goal_handle->canceled(result);
@@ -101,34 +115,70 @@ private:
 				return;
 			}
 
-			float cur;
 			{
 				std::lock_guard<std::mutex> lk(odom_mutex_);
-				cur = current_pose_;
 			}
 
-			feedback->cur_pose = cur;
-			goal_handle->publish_feedback(feedback);
+			float ex = goal->x - curr_x_;
+			float ey = goal->y - curr_y_;
+			float eth = goal->theta - robot_theta_;
+			err_pose_=sqrt(ex*ex+ey*ey);
+			float angle_to_goal = std::atan2(ey, ex);
+       		float steering_error = angle_to_goal - robot_theta_;
+			err_th_ = eth;
 
-			float error = goal->goal - cur;
-			if (std::fabs(error) < 0.05f) {
+			feedback->err_pose = err_pose_;
+			feedback->err_th = err_th_;
+			float w = 0.0f;
+			goal_handle->publish_feedback(feedback);
+			float scaleRotationRate = 0.50f;
+			float orientation_error = 0.0f;
+			if (err_pose_ > 0.05) {
+				// PHASE 1: Heading to the position (using your atan2 logic)
+				// This makes the robot face the "Center" of the goal frame
+				while (steering_error> M_PI) steering_error -= 2.0 * M_PI;
+            	while (steering_error < -M_PI) steering_error += 2.0 * M_PI;
+				w= scaleRotationRate * steering_error;
+			} else {
+				// PHASE 2: Matching the goal's actual orientation (using theta)
+				// This makes the robot align with the "Rotation" of the goal frame
+				orientation_error = goal->theta - robot_theta_;
+				
+				// Normalize to keep it between -PI and PI
+				while (orientation_error > M_PI) orientation_error -= 2.0 * M_PI;
+				while (orientation_error < -M_PI) orientation_error += 2.0 * M_PI;
+
+				w = scaleRotationRate*0.2 * orientation_error;
+			}
+			
+			
+
+			if (std::fabs(err_pose_) < 0.05f && std::fabs(err_th_) < 0.05f)
+			{
 				// reached
 				geometry_msgs::msg::Twist stop_msg;
+				stop_msg.angular.z = 0;
+				stop_msg.linear.x = 0;
 				cmd_pub_->publish(stop_msg);
 				result->done = true;
 				goal_handle->succeed(result);
-				RCLCPP_INFO(this->get_logger(), "Goal reached: %f", cur);
+				//RCLCPP_INFO(this->get_logger(), "Goal reached: %f", cur);
 				return;
 			}
 
 			// publish velocity proportional to error (clamped)
 			geometry_msgs::msg::Twist cmd;
-			float v = error * 0.5f;
+			float v = err_pose_ * 0.5f;
 			if (v > 0.5f) v = 0.5f;
 			if (v < -0.5f) v = -0.5f;
-			cmd.linear.x = v;
-			cmd_pub_->publish(cmd);
+			if (w > 0.5f) w = 0.5f;
+			if (w < -0.5f) w = -0.5f;
+			if (std::fabs(err_pose_) < 0.05f)
+				v = 0.0f;
 
+			cmd.linear.x = v;
+			cmd.angular.z = w;
+			cmd_pub_->publish(cmd);
 			loop_rate.sleep();
 		}
 
@@ -139,10 +189,29 @@ private:
 
 	void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
 	{
-    std::lock_guard<std::mutex> lk(odom_mutex_);
-    current_pose_ = msg->pose.pose.position.x;
-    // Optional: Log it to check if it's working
-    RCLCPP_INFO(this->get_logger(), "Current X: %f", current_pose_);
+		if (init==1){
+		geometry_msgs::msg::Twist cmd1;
+		cmd1.linear.x = 0; 
+		cmd1.angular.z = 0;
+		cmd_pub_->publish(cmd1);
+		init = 2;
+	}
+
+    std::lock_guard<std::mutex> lk(odom_mutex_); 
+    curr_x_ = msg->pose.pose.position.x;
+    curr_y_ = msg->pose.pose.position.y;
+	robot_theta_ = tf2::getYaw(msg->pose.pose.orientation);
+	double x1 = msg->pose.pose.orientation.x;
+	double y1 = msg->pose.pose.orientation.y;
+	double z1 = msg->pose.pose.orientation.z;
+	double w1 = msg->pose.pose.orientation.w;
+
+	// Calculate yaw (rotation around Z-axis)
+	double siny_cosp = 2.0 * (w1 * z1 + x1 * y1);
+	double cosy_cosp = 1.0 - 2.0 * (y1 * y1 + z1 * z1);
+	//robot_theta_ = std::atan2(siny_cosp, cosy_cosp);
+	// Optional: Log it to check if it's workin
+	//RCLCPP_INFO(this->get_logger(), "Current X: %f", current_pose_);
 	}
 };
 }

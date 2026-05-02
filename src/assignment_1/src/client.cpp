@@ -30,15 +30,18 @@ public:
     );
 	}
 
-	void send_goal(float target)
+	void send_goal(float x, float y, float theta)
 	{
 		if (!client_ptr_->wait_for_action_server(5s)) {
 			RCLCPP_ERROR(this->get_logger(), "Action server not available after waiting");
 			return;
 		}
-		target_goal = target;
+		
+
 		auto goal_msg = Nav::Goal();
-		goal_msg.goal = target;
+		goal_msg.x = x;
+		goal_msg.y = y;
+		goal_msg.theta = theta;
 
 		auto send_goal_options = rclcpp_action::Client<Nav>::SendGoalOptions();
 
@@ -58,6 +61,8 @@ private:
 	rclcpp::CallbackGroup::SharedPtr my_callback_group_;
   	bool cancel_sent_{false};
 	float target_goal;
+	float remaining{0.0f};
+	float remaining2{0.0f};
 
 	void goalresponse_cb(GoalHandleNav::SharedPtr goal_handle){
 		if(!goal_handle)
@@ -67,11 +72,14 @@ private:
 		goal_handle_ = goal_handle;
 	};
 	void feedback_cb(GoalHandleNav::SharedPtr goal_handle, const std::shared_ptr<const Nav::Feedback> feedback){
-		float remaining = feedback->cur_pose - target_goal;
+		remaining = feedback->err_pose;
+		remaining2 = feedback->err_th;
+		//RCLCPP_INFO(this->get_logger(), "Errors: %.2f   %.2f", remaining, remaining2*180/M_PI);
+
 		//RCLCPP_INFO(this->get_logger(), "Feedback: cur_pose=%.3f", feedback->cur_pose);
 		 if (cancel_sent_ || !goal_handle_) {
       		return;
-		if (remaining < 1.0 && remaining > -1.0) {
+		if (remaining < 1.0 && remaining > -1.0 && remaining2 < 0.1 && remaining2 > -0.1) {
 		cancel_sent_ = true;
 		//RCLCPP_WARN(this->get_logger(),"Remaining angle less than 1.0, cancelling goal...");
 		client_ptr_->async_cancel_goal(goal_handle_);
@@ -104,22 +112,44 @@ private:
             std::cout << "\n--- User Interface ---\n";
             std::cout << "1. Send Goal\n";
             std::cout << "2. Cancel Current Goal\n";
+			std::cout << "3. check feedback\n";
+
             std::cout << "Selection: ";
             
             int choice;
             std::cin >> choice;
 
             if (choice == 1) {
+				/*
                 float target;
                 std::cout << "Enter target distance: ";
                 std::cin >> target;
                 this->send_goal(target);
-            } else if (choice == 2) {
+				*/
+				float x, y, theta;
+				std::cout << "Enter Goal X: ";
+				std::cin >> x;
+				std::cout << "Enter Goal Y: ";
+				std::cin >> y;
+				std::cout << "Enter Goal Theta (degrees): ";
+				std::cin >> theta;
+				float theta_rad = theta * (M_PI / 180.0);
+
+				this->send_goal(x, y, theta_rad);
+            	} else if (choice == 2) {
 				if(!goal_handle_)
 				(std::cout << "No active goal to cancel." << std::endl);
                 else
 				client_ptr_->async_cancel_goal(goal_handle_);
-            }
+            } else if (choice == 3) {
+				if (goal_handle_) {
+					//RCLCPP_INFO(this->get_logger(), "Checking feedback for active goal.");
+					RCLCPP_INFO(this->get_logger(), "feedback:   distance: %.2f   angle: %.2f", remaining, remaining2*180/M_PI);
+
+				} else {
+					RCLCPP_INFO(this->get_logger(), "No active goal to check feedback for.");
+				}
+			}
         }
     }
 

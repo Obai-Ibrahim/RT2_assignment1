@@ -26,6 +26,7 @@ def generate_launch_description():
         package='rclcpp_components',
         executable='component_container_mt',
         composable_node_descriptions=[
+            
             ComposableNode(
                 package='assignment_1',
                 plugin='nav_system::Server',
