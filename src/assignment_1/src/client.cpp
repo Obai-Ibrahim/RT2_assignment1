@@ -81,7 +81,7 @@ private:
 	}
 
 	void result_cb(const GoalHandleNav::WrappedResult & result) {
-		//goal_handle_ = nullptr;
+		goal_handle_ = nullptr;
 		switch (result.code) {
 			case rclcpp_action::ResultCode::SUCCEEDED:
 				RCLCPP_INFO(this->get_logger(), "Result: done=%s", result.result->done ? "true" : "false");
