@@ -1,0 +1,5 @@
+float32 goal
+---
+bool done
+---
+float32 cur_pose 
