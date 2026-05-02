@@ -6,17 +6,17 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "custom_interfaces/action/nav.hpp"
-
+#include "rclcpp_components/register_node_macro.hpp"
 using namespace std::chrono_literals;
-
+namespace nav_system {
 class NavClient : public rclcpp::Node
 {
 public:
 	using Nav = custom_interfaces::action::Nav;
 	using GoalHandleNav = rclcpp_action::ClientGoalHandle<Nav>;
 
-	NavClient()
-	: Node("nav_client")
+	NavClient(const rclcpp::NodeOptions & options)
+	: Node("nav_client", options)
 	{	my_callback_group_ = this->create_callback_group(
 		rclcpp::CallbackGroupType::Reentrant);
 		auto sub_options = rclcpp::SubscriptionOptions();
@@ -123,30 +123,7 @@ private:
         }
     }
 
-};
+};}
+RCLCPP_COMPONENTS_REGISTER_NODE(nav_system::NavClient)
 
-int main(int argc, char ** argv)
-{
 
-	
-/*
-	rclcpp::init(argc, argv);
-	auto node = std::make_shared<NavClient>();
-	float target = 30.0f;
-	if (argc > 1) {
-		target = std::atof(argv[1]);
-	}
-	// send goal and spin until result is received
-	node->send_goal(target);
-	rclcpp::spin(node);
-	rclcpp::shutdown();
-	return 0;
-*/
-
-	rclcpp::init(argc, argv);
-	auto node = std::make_shared<NavClient>();
-	rclcpp::executors::MultiThreadedExecutor executor;
-	executor.add_node(node);
-	executor.spin();
-	return 0;
-}
