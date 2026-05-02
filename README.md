@@ -19,7 +19,7 @@ Clone the project and switch to the branch containing the completed assignment:
 ```bash
  mkdir -p ~/rt2_ws/src 
  cd ~/rt2_ws/src
- git clone -b complete_assignment  https://github.com/Obai-Ibrahim/ RT2_assignment1.git
+ git clone -b complete_assignment  https://github.com/Obai-Ibrahim/RT2_assignment1.git
  cd ~/rt2_ws
  colcon build 
  source install/setup.bash
@@ -80,3 +80,24 @@ Once the robot enters the 0.5m radius of the goal, it transitions to fine-tuning
     while (error < -M_PI) error += 2.0 * M_PI;
     ```
 *   **Velocity Clamping:** Both linear and angular velocities are clamped to safe maximums (e.g., 0.5 m/s and 0.5 rad/s) to prevent erratic behavior or hardware strain.
+
+
+---
+## 4. User Interface Instructions
+
+The project includes an interactive terminal-based **Action Client** to make controlling the robot intuitive. This interface runs in its own thread to allow for real-time user input without blocking ROS 2 communication.
+
+### How to Use the Interface
+When you run the client node, you will be presented with the following menu:
+
+1.  **Send Goal:** 
+    *   Prompts the user for **X** and **Y** coordinates in meters.
+    *   Prompts for **Theta in degrees**. 
+    *   **Note:** The interface automatically converts your input from degrees to radians ($ \theta_{rad} = \theta_{deg} \times \frac{\pi}{180} $) before sending it to the server.
+2.  **Cancel Current Goal:** 
+    *   Sends an asynchronous request to the server to stop the robot and abort the current mission.
+    *   If no goal is active, the interface will notify you.
+3.  **Check Feedback:** 
+    *   Displays the most recent feedback received from the server.
+    *   Shows the **distance remaining** (meters) and the **angular error** (converted back to degrees for easier reading).
+
